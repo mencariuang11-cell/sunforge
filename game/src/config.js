@@ -24,6 +24,34 @@ export const START_SUNLIGHT = 120;
 export const TOTAL_WAVES = 15;
 
 /**
+ * The three difficulties, chosen on the title screen (keys 1 / 2 / 3 or a click on a
+ * chip). hpMult multiplies every enemy's hit points — campaign waves and bosses
+ * alike — and startSunlight is the treasury a run opens with: the harder the night,
+ * the tougher the Murk and the leaner the purse. DAWN is the standard night.
+ */
+export const DIFFICULTIES = {
+  dawn: { name: 'DAWN', hpMult: 1, startSunlight: 120 },
+  dusk: { name: 'DUSK', hpMult: 1.35, startSunlight: 110 },
+  eclipse: { name: 'ECLIPSE', hpMult: 1.8, startSunlight: 100 },
+};
+
+/** The difficulties in title-screen order; key Digit1 + index picks one. */
+export const DIFFICULTY_ORDER = ['dawn', 'dusk', 'eclipse'];
+
+/** The difficulty a fresh page opens on. */
+export const DEFAULT_DIFFICULTY = 'dawn';
+
+/** The title screen's difficulty chips, shared by render (drawing) and input (clicks). */
+export const DIFFICULTY_CHIPS = [
+  { key: 'dawn', x: 369, y: 524, width: 170, height: 54 },
+  { key: 'dusk', x: 555, y: 524, width: 170, height: 54 },
+  { key: 'eclipse', x: 741, y: 524, width: 170, height: 54 },
+];
+
+/** The victory screen's endless-offer line, clickable as well as keyed (N). */
+export const WON_ENDLESS_RECT = { x: 340, y: 366, width: 600, height: 36 };
+
+/**
  * The path the Murk walks, as grid cells in walking order: in along row 1, down column
  * 12, back along row 4, down column 3, and out along row 7 to the Crystal. Enemies enter
  * from one cell off the left edge and leave one cell past the right edge.
@@ -100,7 +128,7 @@ export const MAX_BEAM_SEGMENTS = 140;
 export const BEAM_CLIP = { minX: -40, minY: 96, maxX: 1048, maxY: 812 };
 
 /**
- * The solar flare: on the late waves (10-15), while the sun crosses the peak of its
+ * The solar flare: on the late waves (10 and up, endless included), while the sun crosses the peak of its
  * arc — wave progress between FLARE_S_START and FLARE_S_END, a tenth of the crossing
  * around noon — its light surges: every beam burns wider and harder. A pure function
  * of wave and progress (sunpath.js's flareStateAt), never of the clock, so a wave

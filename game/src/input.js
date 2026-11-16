@@ -1,14 +1,19 @@
 // Pointer and keyboard input: the panel cards arm a tower for placement, a click on
 // the field builds or selects, a drag on a selected mirror re-aims its face, and the
 // keys cover the rest — Q/E rotate in 15-degree steps, U upgrades, X sells, Space
-// starts waves and runs, P pauses, M mutes. Everything lands on the game's own
-// actions, so playing by hand exercises exactly what the headless test drives.
+// starts waves and runs, P pauses, M mutes. Two screens have their own verbs: on the
+// title, keys 1 / 2 / 3 (or a click on a chip) choose the difficulty, and on the
+// victory screen N (or a click on the offer line) starts the Endless Night.
+// Everything lands on the game's own actions, so playing by hand exercises exactly
+// what the headless test drives.
 import {
-  GRID, PANEL, PANEL_BUTTONS, PANEL_CARDS, VIEW, cellAt,
+  DIFFICULTIES, DIFFICULTY_CHIPS, DIFFICULTY_ORDER, GRID, PANEL, PANEL_BUTTONS,
+  PANEL_CARDS, VIEW, WON_ENDLESS_RECT, cellAt,
 } from './config.js';
 import { TOWER_TYPES } from './towers.js';
 
 const PLACE_KEYS = { Digit1: 'mirror', Digit2: 'prism', Digit3: 'lens' };
+const DIFFICULTY_KEYS = { Digit1: 0, Digit2: 1, Digit3: 2 };
 
 function inside(x, y, rect) {
   return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
@@ -58,6 +63,21 @@ export function createInput(canvas, game, announce) {
   canvas.addEventListener('pointerdown', (event) => {
     const { x, y } = toLogical(event);
     state.pointer = { x, y, inside: true };
+    if (state.screen === 'title') {
+      // A click on a difficulty chip chooses the night; anywhere else starts the run.
+      const chip = DIFFICULTY_CHIPS.find((c) => inside(x, y, c));
+      if (chip) {
+        if (game.setDifficulty(chip.key)) announce(`Difficulty ${DIFFICULTIES[chip.key].name}. Click or press Space to play.`);
+        return;
+      }
+      game.startGame();
+      announce('Playing. Place towers, then start the wave.');
+      return;
+    }
+    if (state.screen === 'won' && inside(x, y, WON_ENDLESS_RECT)) {
+      if (game.startEndless()) announce('The Endless Night. Wave 16 — build, then start the wave.');
+      return;
+    }
     if (state.screen !== 'play') {
       game.startGame();
       announce('Playing. Place towers, then start the wave.');
@@ -135,10 +155,18 @@ export function createInput(canvas, game, announce) {
       case 'Digit1':
       case 'Digit2':
       case 'Digit3':
-        if (state.screen === 'play' && !state.paused) {
+        if (state.screen === 'title') {
+          const key = DIFFICULTY_ORDER[DIFFICULTY_KEYS[event.code]];
+          if (game.setDifficulty(key)) announce(`Difficulty ${DIFFICULTIES[key].name}.`);
+        } else if (state.screen === 'play' && !state.paused) {
           const type = PLACE_KEYS[event.code];
           state.placing = state.placing === type ? null : type;
           state.selectedId = null;
+        }
+        break;
+      case 'KeyN':
+        if (state.screen === 'won') {
+          if (game.startEndless()) announce('The Endless Night. Wave 16 — build, then start the wave.');
         }
         break;
       case 'KeyQ':

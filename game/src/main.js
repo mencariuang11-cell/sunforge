@@ -4,17 +4,23 @@
 // render, input); this file wires them together and owns the rules that cross between
 // them, like a splitter bursting into minis or a cleared wave paying its bonus.
 //
+// Two run-shaping rules also live here: the difficulty picked on the title screen
+// (DAWN / DUSK / ECLIPSE — config.js's DIFFICULTIES) scales every enemy's hit points
+// and sets the opening treasury, and clearing wave 15 wins the campaign but offers
+// the Endless Night — procedurally composed waves 16+ (waves.js's endlessWaveDef)
+// that run until the Crystal falls.
+//
 // ?seed=N fixes the run's random stream. ?shot=cover|prism|boss|won (with &seed=N)
 // stages that screenshot scene instead of running the loop, paints it twice and sets
 // window.__shotReady. window.__sunforge exposes a small test hook for headless play.
 import {
-  CRYSTAL_HP, START_SUNLIGHT, STEP, TOTAL_WAVES, buildPathLine, isPathCell,
+  CRYSTAL_HP, DEFAULT_DIFFICULTY, DIFFICULTIES, STEP, TOTAL_WAVES, buildPathLine, isPathCell,
 } from './config.js';
 import { applyBeamDamage, traceBeams } from './beams.js';
 import { createRandom } from './random.js';
 import { aimMirror, createTower, rotateMirror, sellValue, upgradeCost, TOWER_TYPES } from './towers.js';
 import { createEnemy, enemyCoreHex, placeOnPath } from './enemies.js';
-import { buildSpawnSchedule, bossScaleForWave, hpScaleForWave, waveClearBonus, WAVES } from './waves.js';
+import { buildSpawnSchedule, bossScaleForWave, endlessWaveDef, hpScaleForWave, waveClearBonus, WAVES } from './waves.js';
 import { addSunlight, trySpend } from './economy.js';
 import { createAudio } from './audio.js';
 import { createRenderer } from './render.js';
@@ -37,7 +43,11 @@ export function createGame(seed) {
     paused: false,
     phase: 'build', // 'build' between waves, 'wave' while one runs
     wave: 1,
-    sunlight: START_SUNLIGHT,
+    /** The title-screen difficulty key ('dawn' | 'dusk' | 'eclipse'); see DIFFICULTIES. */
+    difficulty: DEFAULT_DIFFICULTY,
+    /** True once a won campaign continues into the Endless Night (waves 16+). */
+    endless: false,
+    sunlight: DIFFICULTIES[DEFAULT_DIFFICULTY].startSunlight,
     earned: 0,
     crystalHp: CRYSTAL_HP,
     towers: [],
@@ -95,14 +105,15 @@ export function createGame(seed) {
     }
   }
 
-  /** Back to a fresh run: empty field, full Crystal, wave 1, the starting treasury. */
+  /** Back to a fresh run: empty field, full Crystal, wave 1, the difficulty's treasury. */
   function reset() {
     rng = createRandom(seed);
     state.screen = 'play';
     state.paused = false;
     state.phase = 'build';
     state.wave = 1;
-    state.sunlight = START_SUNLIGHT;
+    state.endless = false;
+    state.sunlight = DIFFICULTIES[state.difficulty].startSunlight;
     state.earned = 0;
     state.crystalHp = CRYSTAL_HP;
     state.towers = [];
@@ -129,9 +140,24 @@ export function createGame(seed) {
     audio.play('horn');
   }
 
-  /** Add an enemy of `type` at path distance `dist`, scaled for the current wave. */
+  /**
+   * Pick the run's difficulty (title screen only): every enemy spawned from now on
+   * carries its hit-point multiplier, and the next run opens with its treasury.
+   */
+  function setDifficulty(key) {
+    if (state.screen !== 'title' || !DIFFICULTIES[key]) return false;
+    state.difficulty = key;
+    audio.play('rotate');
+    return true;
+  }
+
+  /**
+   * Add an enemy of `type` at path distance `dist`, scaled for the current wave and
+   * the run's difficulty. An explicit `hpScale` (screenshot staging) is taken as-is.
+   */
   function spawnEnemyAt(type, dist, hpScale = null) {
-    const scale = hpScale ?? (type === 'boss' ? bossScaleForWave(state.wave) : hpScaleForWave(state.wave));
+    const scale = hpScale ?? (type === 'boss' ? bossScaleForWave(state.wave) : hpScaleForWave(state.wave))
+      * DIFFICULTIES[state.difficulty].hpMult;
     const enemy = createEnemy(type, scale, dist);
     placeOnPath(enemy, pathLine);
     state.enemies.push(enemy);
@@ -218,7 +244,7 @@ export function createGame(seed) {
   /** Begin the current wave: schedule its spawns, raise the banner, sound the horn. */
   function startWave() {
     if (state.screen !== 'play' || state.paused || state.phase !== 'build') return false;
-    const def = WAVES[state.wave - 1];
+    const def = state.wave <= TOTAL_WAVES ? WAVES[state.wave - 1] : endlessWaveDef(state.wave);
     state.waveDuration = def.duration;
     state.spawnQueue = buildSpawnSchedule(def);
     state.spawnIndex = 0;
@@ -246,11 +272,31 @@ export function createGame(seed) {
     if (enemy.type === 'boss') setMessage('The Hollow Sun is shattered. The dawn holds.', 6);
   }
 
-  /** The wave is clear: pay the bonus, then either win the campaign or open the next build. */
+  /**
+   * Continue a won campaign into the Endless Night: same field, towers, treasury and
+   * Crystal as the victory left them, but the waves from 16 on are procedurally
+   * composed and the run now ends only when the Crystal falls.
+   */
+  function startEndless() {
+    if (state.screen !== 'won') return false;
+    state.endless = true;
+    state.screen = 'play';
+    state.phase = 'build';
+    state.wave = TOTAL_WAVES + 1;
+    state.sunS = 0;
+    state.waveTime = 0;
+    state.spawnQueue = [];
+    state.spawnIndex = 0;
+    setMessage('The Endless Night begins. Hold the Crystal as long as you can.', 6);
+    audio.play('horn');
+    return true;
+  }
+
+  /** The wave is clear: pay the bonus, then win the campaign or open the next build. */
   function endWave() {
     const bonus = waveClearBonus(state.wave);
     addSunlight(state, bonus);
-    if (state.wave >= TOTAL_WAVES) {
+    if (state.wave >= TOTAL_WAVES && !state.endless) {
       state.screen = 'won';
       audio.play('win');
       return;
@@ -326,7 +372,7 @@ export function createGame(seed) {
 
   return {
     state, audio, pathLine,
-    reset, startGame, placeTower, rotateSelected, aimSelected,
+    reset, startGame, setDifficulty, startEndless, placeTower, rotateSelected, aimSelected,
     upgradeSelected, sellSelected, startWave, spawnEnemyAt, selectedTower, step,
   };
 }
@@ -361,12 +407,16 @@ function snapshot() {
     crystalHp: s.crystalHp, kills: s.kills, leaks: s.leaks,
     enemies: s.enemies.length, towers: s.towers.length,
     segments: s.segments.length, sunS: s.sunS, paused: s.paused,
+    difficulty: s.difficulty, endless: s.endless,
+    enemyMaxHp: s.enemies.map((e) => e.maxHp),
   };
 }
 
 window.__sunforge = {
   snapshot,
   startGame: () => game.startGame(),
+  setDifficulty: (key) => game.setDifficulty(key),
+  startEndless: () => game.startEndless(),
   startWave: () => game.startWave(),
   placeTower: (type, col, row) => game.placeTower(type, col, row),
   rotateSelected: (steps) => game.rotateSelected(steps),

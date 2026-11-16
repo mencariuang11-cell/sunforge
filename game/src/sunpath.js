@@ -5,7 +5,7 @@
 // wrong for the evening, so towers must be re-aimed while the wave is running. (The
 // tower defense this design answers only moves its sun between waves.)
 //
-// The sun also has a temper: on waves 10-15, as it crosses the peak of its arc (wave
+// The sun also has a temper: on waves 10 and up, as it crosses the peak of its arc (wave
 // progress 0.45-0.55), a SOLAR FLARE surges — every beam widens (half-width x1.6) and
 // burns harder (damage x1.5) for that tenth of the crossing, under its own banner.
 // flareStateAt below is the one source of that rule: beams.js burns by it, render.js

@@ -12,6 +12,52 @@ import { flareStateAt, sunStateAt } from './sunpath.js';
 import { TOWER_TYPES } from './towers.js';
 import { effectiveColor } from './enemies.js';
 
+/**
+ * Trace the whole beam network for the sun's current position: a list of segments
+ * { x1, y1, x2, y2, color, power, focused }, where power already carries every mirror
+ * polish, prism gain and lens focus along that segment's chain.
+ */
+export function traceBeams(state) {
+  const sun = sunStateAt(state.sunS);
+  const segments = [];
+  const queue = [{
+    x: sun.x, y: sun.y, dx: sun.dirX, dy: sun.dirY,
+    color: 'white', power: 1, focused: false,
+    prisms: new Set(), lenses: new Set(), ignoreId: -1, bounces: MAX_BOUNCES,
+  }];
+  while (queue.length > 0 && segments.length < MAX_BEAM_SEGMENTS) {
+    let beam = queue.shift();
+    while (beam && beam.bounces > 0 && segments.length < MAX_BEAM_SEGMENTS) {
+      let bestT = Infinity;
+      let hit = null;
+      for (const tower of state.towers) {
+        if (tower.id === beam.ignoreId) continue;
+        const t = rayCircle(beam.x, beam.y, beam.dx, beam.dy, tower.x, tower.y, TOWER_TYPES[tower.type].radius);
+        if (t < bestT) {
+          bestT = t;
+          hit = tower;
+        }
+      }
+      const exitT = rayClipExit(beam.x, beam.y, beam.dx, beam.dy);
+      if (hit && bestT < exitT) {
+        const hx = beam.x + beam.dx * bestT;
+        const hy = beam.y + beam.dy * bestT;
+        segments.push({ x1: beam.x, y1: beam.y, x2: hx, y2: hy, color: beam.color, power: beam.power, focused: beam.focused });
+        beam = interactWithTower(beam, hit, hx, hy, queue);
+      } else {
+        segments.push({
+          x1: beam.x, y1: beam.y,
+          x2: beam.x + beam.dx * exitT, y2: beam.y + beam.dy * exitT,
+          color: beam.color, power: beam.power, focused: beam.focused,
+        });
+        beam = null;
+      }
+      if (beam) beam.bounces -= 1;
+    }
+  }
+  return segments;
+}
+
 /** How far a prism fans its three coloured beams apart, in radians (12 degrees). */
 export const PRISM_FAN = (12 * Math.PI) / 180;
 /** The colours a prism makes, in fan order: red low, green straight, blue high. */
@@ -109,52 +155,6 @@ function interactWithTower(beam, tower, hx, hy, queue) {
     x: hx + beam.dx * MIN_HIT, y: hy + beam.dy * MIN_HIT,
     power, focused, lenses, ignoreId: tower.id,
   };
-}
-
-/**
- * Trace the whole beam network for the sun's current position: a list of segments
- * { x1, y1, x2, y2, color, power, focused }, where power already carries every mirror
- * polish, prism gain and lens focus along that segment's chain.
- */
-export function traceBeams(state) {
-  const sun = sunStateAt(state.sunS);
-  const segments = [];
-  const queue = [{
-    x: sun.x, y: sun.y, dx: sun.dirX, dy: sun.dirY,
-    color: 'white', power: 1, focused: false,
-    prisms: new Set(), lenses: new Set(), ignoreId: -1, bounces: MAX_BOUNCES,
-  }];
-  while (queue.length > 0 && segments.length < MAX_BEAM_SEGMENTS) {
-    let beam = queue.shift();
-    while (beam && beam.bounces > 0 && segments.length < MAX_BEAM_SEGMENTS) {
-      let bestT = Infinity;
-      let hit = null;
-      for (const tower of state.towers) {
-        if (tower.id === beam.ignoreId) continue;
-        const t = rayCircle(beam.x, beam.y, beam.dx, beam.dy, tower.x, tower.y, TOWER_TYPES[tower.type].radius);
-        if (t < bestT) {
-          bestT = t;
-          hit = tower;
-        }
-      }
-      const exitT = rayClipExit(beam.x, beam.y, beam.dx, beam.dy);
-      if (hit && bestT < exitT) {
-        const hx = beam.x + beam.dx * bestT;
-        const hy = beam.y + beam.dy * bestT;
-        segments.push({ x1: beam.x, y1: beam.y, x2: hx, y2: hy, color: beam.color, power: beam.power, focused: beam.focused });
-        beam = interactWithTower(beam, hit, hx, hy, queue);
-      } else {
-        segments.push({
-          x1: beam.x, y1: beam.y,
-          x2: beam.x + beam.dx * exitT, y2: beam.y + beam.dy * exitT,
-          color: beam.color, power: beam.power, focused: beam.focused,
-        });
-        beam = null;
-      }
-      if (beam) beam.bounces -= 1;
-    }
-  }
-  return segments;
 }
 
 /** The damage factor of a beam of `beamColor` on `enemy`: colour match is everything. */

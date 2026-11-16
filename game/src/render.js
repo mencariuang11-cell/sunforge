@@ -5,8 +5,8 @@
 // scales it to the window. The judge reads this game mostly through its screenshots,
 // so every screen — title, battle, victory, defeat — is composed to read at a glance.
 import {
-  COLOR_HEX, FONT, GRID, PANEL, PANEL_BUTTONS, PANEL_CARDS, PALETTE,
-  TOTAL_WAVES, VIEW, buildPathLine, cellAt, isPathCell,
+  COLOR_HEX, DIFFICULTIES, DIFFICULTY_CHIPS, FONT, GRID, PANEL,
+  PANEL_BUTTONS, PANEL_CARDS, PALETTE, TOTAL_WAVES, VIEW, buildPathLine, cellAt, isPathCell,
 } from './config.js';
 import { TOWER_TYPES, sellValue, upgradeCost } from './towers.js';
 import { enemyCoreHex } from './enemies.js';
@@ -472,11 +472,11 @@ export function createRenderer(canvas) {
     ctx.shadowBlur = 0;
     text(ctx, `${state.sunlight}`, 52, 27, { size: 21, weight: '700', color: PALETTE.sunlight });
     text(ctx, 'SUNLIGHT', 52, 44, { size: 9, color: PALETTE.muted, weight: '700' });
-    // Wave and phase.
-    const waveLabel = state.screen === 'play'
-      ? (state.phase === 'wave' ? `WAVE ${state.wave} / ${TOTAL_WAVES}` : `WAVE ${state.wave} / ${TOTAL_WAVES} — BUILD`)
-      : `WAVE ${state.wave} / ${TOTAL_WAVES}`;
-    text(ctx, waveLabel, 210, 27, { size: 18, weight: '700' });
+    // Wave and phase, with the run's difficulty always named beside them.
+    const waveBase = state.endless
+      ? `WAVE ${state.wave} — ENDLESS`
+      : `WAVE ${state.wave} / ${TOTAL_WAVES}${state.screen === 'play' && state.phase === 'build' ? ' — BUILD' : ''}`;
+    text(ctx, `${waveBase} · ${DIFFICULTIES[state.difficulty].name}`, 210, 27, { size: 18, weight: '700' });
     // Crystal health.
     text(ctx, 'CRYSTAL', 420, 20, { size: 10, color: PALETTE.muted, weight: '700' });
     drawBar(420, 30, 130, state.crystalHp / 20, PALETTE.crystal);
@@ -616,7 +616,7 @@ export function createRenderer(canvas) {
     ctx.restore();
   }
 
-  function overlayPanel(title, titleColor, lines, prompt, state) {
+  function overlayPanel(title, titleColor, lines, prompt, state, hotLine = -1) {
     ctx.fillStyle = 'rgba(9,7,22,0.58)';
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
     ctx.save();
@@ -629,10 +629,34 @@ export function createRenderer(canvas) {
     ctx.fillText(title, VIEW.width / 2, 268);
     ctx.restore();
     lines.forEach((line, i) => {
-      text(ctx, line, VIEW.width / 2, 330 + i * 27, { size: 16.5, align: 'center', color: PALETTE.text });
+      const hot = i === hotLine;
+      text(ctx, line, VIEW.width / 2, 330 + i * 27, {
+        size: 16.5, align: 'center',
+        color: hot ? PALETTE.sunlight : PALETTE.text,
+        weight: hot ? '700' : '400',
+      });
     });
     const pulse = 0.65 + 0.35 * Math.sin(state.time * 3.2);
     text(ctx, prompt, VIEW.width / 2, 348 + lines.length * 27, { size: 17, align: 'center', weight: '700', color: PALETTE.sunlight, alpha: pulse });
+  }
+
+  /** The title screen's difficulty selector: three chips, the chosen night lit. */
+  function drawDifficultySelector(state) {
+    text(ctx, 'CHOOSE THE NIGHT — KEYS 1 · 2 · 3 OR CLICK', VIEW.width / 2, 508, { size: 12, align: 'center', weight: '700', color: PALETTE.muted });
+    for (const chip of DIFFICULTY_CHIPS) {
+      const def = DIFFICULTIES[chip.key];
+      const chosen = state.difficulty === chip.key;
+      ctx.fillStyle = chosen ? 'rgba(255,215,106,0.30)' : 'rgba(16,12,34,0.62)';
+      roundRect(ctx, chip.x, chip.y, chip.width, chip.height, 9);
+      ctx.fill();
+      ctx.strokeStyle = chosen ? PALETTE.sunlight : PALETTE.panelEdge;
+      ctx.lineWidth = chosen ? 2.2 : 1.2;
+      roundRect(ctx, chip.x, chip.y, chip.width, chip.height, 9);
+      ctx.stroke();
+      const cx = chip.x + chip.width / 2;
+      text(ctx, def.name, cx, chip.y + 19, { size: 17, align: 'center', weight: '800', color: chosen ? PALETTE.sunlight : PALETTE.text });
+      text(ctx, `foes x${def.hpMult} · start ${def.startSunlight}`, cx, chip.y + 40, { size: 10.5, align: 'center', color: PALETTE.muted });
+    }
   }
 
   function draw(state) {
@@ -655,16 +679,20 @@ export function createRenderer(canvas) {
         'The Murk walks the path to eat the Dawn Crystal. Stop it with sunlight.',
         'Mirrors bend the beam · Prisms split it into colours · Lenses focus it.',
         'The sun crosses the sky DURING each wave — re-aim with Q / E or drag.',
-        'Coloured light burns matching wisps hardest. Clear all 15 waves.',
+        'Coloured light burns matching wisps hardest. Clear all 15 waves — then face the Endless Night.',
       ], 'CLICK OR PRESS SPACE TO PLAY', state);
+      drawDifficultySelector(state);
     } else if (state.screen === 'won') {
       overlayPanel('THE DAWN IS RESTORED', PALETTE.crystal, [
         'All fifteen waves burned away, and the Crystal still shines.',
         `Murk burned: ${state.kills} · Sunlight earned: ${state.earned} · Leaks: ${state.leaks}`,
-      ], 'CLICK OR PRESS SPACE TO PLAY AGAIN', state);
+        'PRESS N — FACE THE ENDLESS NIGHT',
+      ], 'CLICK OR PRESS SPACE TO PLAY AGAIN', state, 2);
     } else if (state.screen === 'lost') {
       overlayPanel('THE CRYSTAL FALLS', PALETTE.red, [
-        `The night got through on wave ${state.wave} of ${TOTAL_WAVES}.`,
+        state.endless
+          ? `The Endless Night took the Crystal on wave ${state.wave}.`
+          : `The night got through on wave ${state.wave} of ${TOTAL_WAVES}.`,
         `Murk burned: ${state.kills} · Sunlight earned: ${state.earned}`,
       ], 'CLICK OR PRESS SPACE TO TRY AGAIN', state);
     } else if (state.paused) {

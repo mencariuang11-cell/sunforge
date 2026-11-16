@@ -57,6 +57,22 @@ function segmentCrossing(samples, seg) {
   return best;
 }
 
+/**
+ * The campaign ledger a scene on `wave` opens with: the kills, Sunlight earned,
+ * leaks and Crystal health accumulated over the waves before it, derived from the
+ * game's own numbers — each cleared wave's full composition killed (a splitter's
+ * two minis included) at ENEMY_TYPES bounties, plus its waveClearBonus of
+ * 25 + 5 x wave — less two leaks along the way (a shade on wave 2, a mini on
+ * wave 7: -1 and -2 bounty, -1 Crystal each). So a wave-8 HUD never reads
+ * "Burned 0", and the victory totals are a campaign's, not one wave's.
+ */
+const CAMPAIGN_LEDGER = {
+  6: { kills: 56, earned: 692, leaks: 1, crystalHp: 19 },
+  8: { kills: 95, earned: 1031, leaks: 2, crystalHp: 18 },
+  10: { kills: 128, earned: 1412, leaks: 2, crystalHp: 18 },
+  15: { kills: 248, earned: 2767, leaks: 2, crystalHp: 18 },
+};
+
 /** Put a fresh scene into a wave on `wave`, with the sun frozen and a full treasury for building. */
 function setupScene(game, wave) {
   const state = game.state;
@@ -71,6 +87,13 @@ function setupScene(game, wave) {
   state.sunlight = 100000;
   state.message = '';
   state.messageT = 0;
+  const ledger = CAMPAIGN_LEDGER[wave];
+  if (ledger) {
+    state.kills = ledger.kills;
+    state.earned = ledger.earned;
+    state.leaks = ledger.leaks;
+    state.crystalHp = ledger.crystalHp;
+  }
   return state;
 }
 
@@ -86,11 +109,12 @@ function buildTower(game, type, col, row, angleDeg = null, level = 1) {
 /**
  * Search sun positions on a fixed grid and keep the one whose traced network scores
  * best under `scoreSegments(segments, samples)`. Deterministic: same grid, same pick.
+ * `range` narrows the grid (the boss scene searches only inside the flare window).
  */
-function bestSunPosition(game, samples, scoreSegments) {
+function bestSunPosition(game, samples, scoreSegments, range = { from: 0.06, to: 0.95, step: 0.02 }) {
   const state = game.state;
   let best = { s: 0.5, score: -Infinity, segments: [] };
-  for (let s = 0.06; s <= 0.951; s += 0.02) {
+  for (let s = range.from; s <= range.to + 1e-9; s += range.step) {
     state.sunS = s;
     const segments = traceBeams(state);
     const score = scoreSegments(segments, samples);
@@ -185,7 +209,11 @@ function stagePrism(game) {
   settle(game);
 }
 
-/** 3-boss: the wave-10 Hollow Sun under a lens-focused beam, the network around it. */
+/**
+ * 3-boss: the wave-10 Hollow Sun under a lens-focused beam, the network around it —
+ * staged inside the solar-flare window (sun progress 0.46-0.54, within 0.45-0.55),
+ * so the frame carries the flare banner and the widened, brightened beams.
+ */
 function stageBoss(game) {
   const state = setupScene(game, 10);
   const samples = pathSamples(game.pathLine);
@@ -204,7 +232,7 @@ function stageBoss(game) {
     }
     return score;
   };
-  const { segments } = bestSunPosition(game, samples, bossScore);
+  const { segments } = bestSunPosition(game, samples, bossScore, { from: 0.46, to: 0.54, step: 0.02 });
   // The boss stands where the focused light crosses the road, if it does anywhere.
   let bossDist = null;
   for (const seg of segments) {
@@ -239,10 +267,11 @@ function stageBoss(game) {
 }
 
 /**
- * 4-victory: the dawn network of the old dawn scene, but the final wave is then
- * genuinely fought: enemies planted on the crossings at half strength burn, leak
- * or burst under the game's own step until its own wave-clear rule ends wave 15
- * and raises the victory screen — real kills, real bounties, real leaks on it.
+ * 4-victory: the dawn network of the old dawn scene, opened on the campaign ledger
+ * (setupScene), but the final wave is then genuinely fought: enemies planted on
+ * the crossings at reduced strength burn, leak or burst under the game's own step
+ * until its own wave-clear rule ends wave 15 and raises the victory screen — the
+ * totals on it are the seeded campaign's plus the fight's real kills and bounties.
  */
 function stageWon(game) {
   const state = setupScene(game, 15);
