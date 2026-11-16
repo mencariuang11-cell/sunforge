@@ -194,9 +194,9 @@ function stageBoss(game) {
   buildTower(game, 'prism', 11, 3);
   buildTower(game, 'mirror', 13, 6, 105);
   buildTower(game, 'mirror', 2, 3, 45);
-  buildTower(game, 'mirror', 3, 6, 30);
+  buildTower(game, 'mirror', 4, 6, 30);
   buildTower(game, 'lens', 9, 5);
-  buildTower(game, 'mirror', 8, 7, 120);
+  buildTower(game, 'mirror', 8, 6, 120);
   const bossScore = (segments, smp) => {
     let score = networkScore(segments, smp);
     for (const seg of segments) {

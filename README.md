@@ -21,6 +21,8 @@ SUNFORGE is a sunbeam tower defense in plain JavaScript — no library, no build
 
 **The beam** — base burn 30 damage per second before factors, applied to any enemy standing in the light (7 px half-width, 4 px when focused). White light burns at ×0.6 against everything; coloured light burns at full strength against its own colour and ×0.25 against other colours and the colourless. One traced network is capped at 140 segments, splits included.
 
+**Solar flare** — on waves 10–15, while the sun crosses the peak of its arc (wave progress 0.45–0.55), every beam widens (half-width ×1.6) and burns harder (damage ×1.5) under a "SOLAR FLARE — THE SUN SURGES" banner; a pure function of wave progress, so it fires at the same moment of the crossing every run.
+
 **Towers** — every tower upgrades to level 3 (an upgrade costs 80% of the base price × current level) and sells at 70% of its total invested Sunlight:
 
 | Tower | Cost | What it does to the beam |

@@ -8,7 +8,7 @@ import {
   BEAM_CLIP, BEAM_DPS, BEAM_HALF_WIDTH, BEAM_HALF_WIDTH_FOCUSED,
   MAX_BEAM_SEGMENTS, OFF_COLOR_FACTOR, WHITE_FACTOR,
 } from './config.js';
-import { sunStateAt } from './sunpath.js';
+import { flareStateAt, sunStateAt } from './sunpath.js';
 import { TOWER_TYPES } from './towers.js';
 import { effectiveColor } from './enemies.js';
 
@@ -182,15 +182,18 @@ export function segmentPointDistance(x1, y1, x2, y2, px, py) {
  * the caller pays bounties and bursts splitters, this pass only does the burning.
  */
 export function applyBeamDamage(state, segments, dt) {
+  // The solar flare (late waves, the sun at its peak) widens every beam's burn and
+  // raises its rate for that window; outside it both multipliers are 1.
+  const flare = flareStateAt(state.sunS, state.wave);
   const killed = [];
   for (const enemy of state.enemies) {
     if (enemy.dead || enemy.leaked) continue;
     let dps = 0;
     let strongest = 0;
     for (const seg of segments) {
-      const halfWidth = seg.focused ? BEAM_HALF_WIDTH_FOCUSED : BEAM_HALF_WIDTH;
+      const halfWidth = (seg.focused ? BEAM_HALF_WIDTH_FOCUSED : BEAM_HALF_WIDTH) * flare.widthMult;
       if (segmentPointDistance(seg.x1, seg.y1, seg.x2, seg.y2, enemy.x, enemy.y) < enemy.radius + halfWidth) {
-        const here = BEAM_DPS * seg.power * beamColorFactor(seg.color, enemy);
+        const here = BEAM_DPS * seg.power * beamColorFactor(seg.color, enemy) * flare.damageMult;
         dps += here;
         if (here > strongest) {
           strongest = here;

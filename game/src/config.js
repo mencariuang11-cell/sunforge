@@ -99,6 +99,22 @@ export const MAX_BEAM_SEGMENTS = 140;
 /** The rectangle a traced beam is clipped to: a little past the field on every side. */
 export const BEAM_CLIP = { minX: -40, minY: 96, maxX: 1048, maxY: 812 };
 
+/**
+ * The solar flare: on the late waves (10-15), while the sun crosses the peak of its
+ * arc — wave progress between FLARE_S_START and FLARE_S_END, a tenth of the crossing
+ * around noon — its light surges: every beam burns wider and harder. A pure function
+ * of wave and progress (sunpath.js's flareStateAt), never of the clock, so a wave
+ * always flares at the same moment of its crossing.
+ */
+export const FLARE_FIRST_WAVE = 10;
+/** Wave progress where the flare window opens and closes (the sun's peak crossing). */
+export const FLARE_S_START = 0.45;
+export const FLARE_S_END = 0.55;
+/** Beam half-width multiplier while the flare burns. */
+export const FLARE_WIDTH_MULT = 1.6;
+/** Beam damage multiplier while the flare burns. */
+export const FLARE_DAMAGE_MULT = 1.5;
+
 /** The side panel: tower cards, the selected tower's details, the wave button. */
 export const PANEL = { x: 1008, y: 156, width: 248, height: 600 };
 export const PANEL_CARDS = [

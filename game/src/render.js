@@ -10,7 +10,7 @@ import {
 } from './config.js';
 import { TOWER_TYPES, sellValue, upgradeCost } from './towers.js';
 import { enemyCoreHex } from './enemies.js';
-import { sunArcPoints, sunStateAt } from './sunpath.js';
+import { flareStateAt, sunArcPoints, sunStateAt } from './sunpath.js';
 import { createRandom } from './random.js';
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -236,11 +236,14 @@ export function createRenderer(canvas) {
     ctx.restore();
 
     const sun = sunStateAt(state.sunS);
-    const glow = ctx.createRadialGradient(sun.x, sun.y, 2, sun.x, sun.y, 58);
-    glow.addColorStop(0, 'rgba(255,215,106,0.55)');
+    // While the solar flare burns (late waves, the sun at its peak) the sun swells.
+    const flare = flareStateAt(state.sunS, state.wave);
+    const glowRadius = flare.active ? 88 : 58;
+    const glow = ctx.createRadialGradient(sun.x, sun.y, 2, sun.x, sun.y, glowRadius);
+    glow.addColorStop(0, `rgba(255,215,106,${flare.active ? 0.85 : 0.55})`);
     glow.addColorStop(1, 'rgba(255,215,106,0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(sun.x - 58, sun.y - 58, 116, 116);
+    ctx.fillRect(sun.x - glowRadius, sun.y - glowRadius, glowRadius * 2, glowRadius * 2);
     ctx.save();
     ctx.translate(sun.x, sun.y);
     ctx.rotate(state.time * 0.25);
@@ -264,27 +267,30 @@ export function createRenderer(canvas) {
   }
 
   function drawBeams(state) {
+    // The solar flare draws as it burns: wider strokes, brighter light (flareStateAt).
+    const flare = flareStateAt(state.sunS, state.wave);
+    const brighten = flare.active ? 1.35 : 1;
     ctx.save();
     ctx.lineCap = 'round';
     for (const seg of state.segments) {
       const hex = COLOR_HEX[seg.color];
       const flicker = 0.86 + 0.14 * Math.sin(state.time * 34 + seg.x1 * 0.05 + seg.y1 * 0.03);
       ctx.strokeStyle = hex;
-      ctx.globalAlpha = 0.13 * flicker;
-      ctx.lineWidth = seg.focused ? 10 : 15;
+      ctx.globalAlpha = Math.min(1, 0.13 * flicker * brighten);
+      ctx.lineWidth = (seg.focused ? 10 : 15) * flare.widthMult;
       ctx.beginPath();
       ctx.moveTo(seg.x1, seg.y1);
       ctx.lineTo(seg.x2, seg.y2);
       ctx.stroke();
-      ctx.globalAlpha = 0.38 * flicker;
-      ctx.lineWidth = seg.focused ? 4.5 : 7;
+      ctx.globalAlpha = Math.min(1, 0.38 * flicker * brighten);
+      ctx.lineWidth = (seg.focused ? 4.5 : 7) * flare.widthMult;
       ctx.beginPath();
       ctx.moveTo(seg.x1, seg.y1);
       ctx.lineTo(seg.x2, seg.y2);
       ctx.stroke();
       ctx.strokeStyle = '#fffbe8';
-      ctx.globalAlpha = 0.92 * flicker;
-      ctx.lineWidth = seg.focused ? 1.8 : 2.6;
+      ctx.globalAlpha = Math.min(1, 0.92 * flicker * brighten);
+      ctx.lineWidth = (seg.focused ? 1.8 : 2.6) * flare.widthMult;
       ctx.beginPath();
       ctx.moveTo(seg.x1, seg.y1);
       ctx.lineTo(seg.x2, seg.y2);
@@ -593,6 +599,23 @@ export function createRenderer(canvas) {
     ctx.restore();
   }
 
+  /** The solar flare's banner: up for exactly the window flareStateAt calls active. */
+  function drawFlareBanner(state) {
+    if (state.screen !== 'play' || state.phase !== 'wave') return;
+    if (!flareStateAt(state.sunS, state.wave).active) return;
+    const pulse = 0.8 + 0.2 * Math.sin(state.time * 6);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.font = `800 27px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#ff9d45';
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillText('SOLAR FLARE — THE SUN SURGES', 504, 108);
+    ctx.restore();
+  }
+
   function overlayPanel(title, titleColor, lines, prompt, state) {
     ctx.fillStyle = 'rgba(9,7,22,0.58)';
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
@@ -625,6 +648,7 @@ export function createRenderer(canvas) {
     drawPanel(state);
     drawMessage(state);
     drawBanner(state);
+    drawFlareBanner(state);
     if (state.screen === 'title') {
       overlayPanel('S U N F O R G E', PALETTE.sunlight, [
         'Bend the dawn. Burn the night.',
