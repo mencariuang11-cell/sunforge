@@ -4,17 +4,20 @@
 // render, input); this file wires them together and owns the rules that cross between
 // them, like a splitter bursting into minis or a cleared wave paying its bonus.
 //
-// Two run-shaping rules also live here: the difficulty picked on the title screen
+// Three run-shaping rules also live here: the difficulty picked on the title screen
 // (DAWN / DUSK / ECLIPSE — config.js's DIFFICULTIES) scales every enemy's hit points
-// and sets the opening treasury, and clearing wave 15 wins the campaign but offers
-// the Endless Night — procedurally composed waves 16+ (waves.js's endlessWaveDef)
-// that run until the Crystal falls.
+// and sets the opening treasury; the road shifts at wave 11 — waves 1-10 walk the
+// Dawn Road, wave 11 and beyond walk the Ember Road (config.js's pathForWave), and
+// shiftRoad below refunds in full any tower the new road needs the ground of; and
+// clearing wave 15 wins the campaign but offers the Endless Night — procedurally
+// composed waves 16+ (waves.js's endlessWaveDef) that run until the Crystal falls.
 //
 // ?seed=N fixes the run's random stream. ?shot=cover|prism|boss|won (with &seed=N)
 // stages that screenshot scene instead of running the loop, paints it twice and sets
 // window.__shotReady. window.__sunforge exposes a small test hook for headless play.
 import {
-  CRYSTAL_HP, DEFAULT_DIFFICULTY, DIFFICULTIES, STEP, TOTAL_WAVES, buildPathLine, isPathCell,
+  CRYSTAL_HP, DEFAULT_DIFFICULTY, DIFFICULTIES, SHIFT_WAVE, STEP, TOTAL_WAVES,
+  buildPathLine, isPathCell, pathForWave,
 } from './config.js';
 import { applyBeamDamage, traceBeams } from './beams.js';
 import { createRandom } from './random.js';
@@ -34,7 +37,9 @@ import { stageShot } from './shots.js';
  */
 export function createGame(seed) {
   const audio = createAudio();
-  const pathLine = buildPathLine();
+  // Both roads' walking lines, built once: which one is live follows the wave.
+  const dawnLine = buildPathLine(pathForWave(1));
+  const emberLine = buildPathLine(pathForWave(SHIFT_WAVE));
   let rng = createRandom(seed);
   let popCooldown = 0;
 
@@ -79,6 +84,11 @@ export function createGame(seed) {
   /** The tower the player has selected, or null. */
   function selectedTower() {
     return state.towers.find((t) => t.id === state.selectedId) ?? null;
+  }
+
+  /** The walking line of the road the current wave walks (Ember from wave 11 on). */
+  function activePathLine() {
+    return state.wave >= SHIFT_WAVE ? emberLine : dawnLine;
   }
 
   /** Show a short-lived line of guidance under the field. */
@@ -159,7 +169,7 @@ export function createGame(seed) {
     const scale = hpScale ?? (type === 'boss' ? bossScaleForWave(state.wave) : hpScaleForWave(state.wave))
       * DIFFICULTIES[state.difficulty].hpMult;
     const enemy = createEnemy(type, scale, dist);
-    placeOnPath(enemy, pathLine);
+    placeOnPath(enemy, activePathLine());
     state.enemies.push(enemy);
     return enemy;
   }
@@ -170,7 +180,7 @@ export function createGame(seed) {
    */
   function placeTower(type, col, row) {
     if (state.screen !== 'play' || state.paused) return false;
-    if (isPathCell(col, row)) {
+    if (isPathCell(col, row, state.wave)) {
       setMessage('The Murk walks there — towers need open ground.');
       audio.play('deny');
       return false;
@@ -292,6 +302,29 @@ export function createGame(seed) {
     return true;
   }
 
+  /**
+   * The road shift, run as wave 11's build phase opens: the Murk's road moves from
+   * the Dawn Road to the Ember Road. Any tower standing on a cell the Ember Road
+   * needs is removed and refunded IN FULL — its whole invested Sunlight, purchase
+   * plus upgrades, not the 70% a sale pays — and the refund is announced on screen,
+   * so the shift never quietly eats a player's work. Towers elsewhere stand as they
+   * were; the selection follows its tower if that tower is refunded away.
+   */
+  function shiftRoad() {
+    const caught = state.towers.filter((t) => isPathCell(t.col, t.row, SHIFT_WAVE));
+    if (caught.length === 0) {
+      setMessage('THE ROAD SHIFTS — THE EMBER ROAD OPENS', 6);
+      return;
+    }
+    const refund = caught.reduce((sum, t) => sum + t.invested, 0);
+    const gone = new Set(caught.map((t) => t.id));
+    state.towers = state.towers.filter((t) => !gone.has(t.id));
+    if (gone.has(state.selectedId)) state.selectedId = null;
+    if (gone.has(state.draggingId)) state.draggingId = null;
+    addSunlight(state, refund);
+    setMessage(`THE ROAD SHIFTS — ${caught.length} TOWER${caught.length === 1 ? '' : 'S'} REFUNDED +${refund} SUNLIGHT`, 6);
+  }
+
   /** The wave is clear: pay the bonus, then win the campaign or open the next build. */
   function endWave() {
     const bonus = waveClearBonus(state.wave);
@@ -303,6 +336,8 @@ export function createGame(seed) {
     }
     setMessage(`Wave ${state.wave} cleared. +${bonus} Sunlight bonus.`, 5);
     state.wave += 1;
+    // The build phase that opens wave 11 is the one the road shifts in.
+    if (state.wave === SHIFT_WAVE) shiftRoad();
     state.phase = 'build';
     state.sunS = 0;
     state.waveTime = 0;
@@ -341,18 +376,19 @@ export function createGame(seed) {
       spawnEnemyAt(state.spawnQueue[state.spawnIndex].type, 0);
       state.spawnIndex += 1;
     }
+    const line = activePathLine();
     for (const enemy of state.enemies) {
       enemy.age += dt;
       enemy.dist += enemy.speed * dt;
       if (enemy.flash > 0) enemy.flash -= dt;
-      placeOnPath(enemy, pathLine);
+      placeOnPath(enemy, line);
     }
     state.segments = traceBeams(state);
     for (const enemy of applyBeamDamage(state, state.segments, dt)) resolveKill(enemy);
-    // Leaks: anything that walked the whole path bites the Crystal.
-    const end = pathLine.points[pathLine.points.length - 1];
+    // Leaks: anything that walked the whole road bites the Crystal.
+    const end = line.points[line.points.length - 1];
     for (const enemy of state.enemies) {
-      if (enemy.dead || enemy.leaked || enemy.dist < pathLine.total) continue;
+      if (enemy.dead || enemy.leaked || enemy.dist < line.total) continue;
       enemy.leaked = true;
       state.leaks += 1;
       state.crystalHp -= enemy.leak;
@@ -371,7 +407,9 @@ export function createGame(seed) {
   }
 
   return {
-    state, audio, pathLine,
+    state, audio,
+    /** The live road's walking line: Dawn before wave 11, Ember from wave 11 on. */
+    get pathLine() { return activePathLine(); },
     reset, startGame, setDifficulty, startEndless, placeTower, rotateSelected, aimSelected,
     upgradeSelected, sellSelected, startWave, spawnEnemyAt, selectedTower, step,
   };
@@ -409,16 +447,26 @@ function snapshot() {
     segments: s.segments.length, sunS: s.sunS, paused: s.paused,
     difficulty: s.difficulty, endless: s.endless,
     enemyMaxHp: s.enemies.map((e) => e.maxHp),
+    /** Which road the current wave walks, and where everything stands on it. */
+    road: s.wave >= SHIFT_WAVE ? 'ember' : 'dawn',
+    enemyPos: s.enemies.map((e) => ({ x: Math.round(e.x), y: Math.round(e.y), dist: Math.round(e.dist) })),
+    towerCells: s.towers.map((t) => [t.col, t.row]),
+    message: s.message,
   };
 }
 
 window.__sunforge = {
   snapshot,
+  /** The live state, for test staging (the same access shots.js stages scenes with). */
+  state: game.state,
+  /** The road a wave walks, as grid cells (config.js's pathForWave). */
+  pathForWave: (wave) => pathForWave(wave),
   startGame: () => game.startGame(),
   setDifficulty: (key) => game.setDifficulty(key),
   startEndless: () => game.startEndless(),
   startWave: () => game.startWave(),
   placeTower: (type, col, row) => game.placeTower(type, col, row),
+  upgradeSelected: () => game.upgradeSelected(),
   rotateSelected: (steps) => game.rotateSelected(steps),
   selectTowerAt: (col, row) => {
     const tower = game.state.towers.find((t) => t.col === col && t.row === row);

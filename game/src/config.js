@@ -3,7 +3,9 @@
 // scales that area to the window, so no rule below depends on the screen size. The Murk
 // walks a winding path across a 16x10 tile grid from the night gate (left) to the Dawn
 // Crystal (right); the player spends Sunlight on mirror, prism and lens towers that
-// steer the sun's beam into them.
+// steer the sun's beam into them. The road itself is not fixed: waves 1-10 walk the
+// Dawn Road, and at wave 11 the road shifts to the Ember Road for the rest of the run
+// (see SHIFT_WAVE and main.js's shiftRoad, which refunds towers caught in its way).
 
 /** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
 export const STEP = 1 / 60;
@@ -43,26 +45,52 @@ export const DEFAULT_DIFFICULTY = 'dawn';
 
 /** The title screen's difficulty chips, shared by render (drawing) and input (clicks). */
 export const DIFFICULTY_CHIPS = [
-  { key: 'dawn', x: 369, y: 524, width: 170, height: 54 },
-  { key: 'dusk', x: 555, y: 524, width: 170, height: 54 },
-  { key: 'eclipse', x: 741, y: 524, width: 170, height: 54 },
+  { key: 'dawn', x: 369, y: 556, width: 170, height: 54 },
+  { key: 'dusk', x: 555, y: 556, width: 170, height: 54 },
+  { key: 'eclipse', x: 741, y: 556, width: 170, height: 54 },
 ];
 
 /** The victory screen's endless-offer line, clickable as well as keyed (N). */
 export const WON_ENDLESS_RECT = { x: 340, y: 366, width: 600, height: 36 };
 
+/** The first wave that walks the Ember Road: the shift lands as its build phase opens. */
+export const SHIFT_WAVE = 11;
+
 /**
- * The path the Murk walks, as grid cells in walking order: in along row 1, down column
- * 12, back along row 4, down column 3, and out along row 7 to the Crystal. Enemies enter
- * from one cell off the left edge and leave one cell past the right edge.
+ * The Dawn Road, walked on waves 1-10, as grid cells in walking order: in along row 1,
+ * down column 12, back along row 4, down column 3, and out along row 7 to the Crystal.
+ * Enemies enter from one cell off the left edge and leave one cell past the right edge.
+ * 2,460 px of road in all.
  */
-export const PATH_CELLS = [
+export const DAWN_ROAD_CELLS = [
   [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1],
   [12, 2], [12, 3], [12, 4],
   [11, 4], [10, 4], [9, 4], [8, 4], [7, 4], [6, 4], [5, 4], [4, 4], [3, 4],
   [3, 5], [3, 6], [3, 7],
   [4, 7], [5, 7], [6, 7], [7, 7], [8, 7], [9, 7], [10, 7], [11, 7], [12, 7], [13, 7], [14, 7], [15, 7], [16, 7],
 ];
+
+/**
+ * The Ember Road, walked from wave 11 on (the late campaign and every Endless Night
+ * wave): a different route over the same grid — in LOW along row 8, up column 12, back
+ * along row 6, up column 2, across row 2, down column 10, and out along row 5, straight
+ * at the Crystal's row. 2,760 px of road: within an eighth of the Dawn Road's length,
+ * so the late waves' balance carries over without touching any other number.
+ */
+export const EMBER_ROAD_CELLS = [
+  [-1, 8], [0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8], [6, 8], [7, 8], [8, 8], [9, 8], [10, 8], [11, 8], [12, 8],
+  [12, 7], [12, 6],
+  [11, 6], [10, 6], [9, 6], [8, 6], [7, 6], [6, 6], [5, 6], [4, 6], [3, 6], [2, 6],
+  [2, 5], [2, 4], [2, 3], [2, 2],
+  [3, 2], [4, 2], [5, 2], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2],
+  [10, 3], [10, 4], [10, 5],
+  [11, 5], [12, 5], [13, 5], [14, 5], [15, 5], [16, 5],
+];
+
+/** The road `wave` walks: the Dawn Road before the shift, the Ember Road from it on. */
+export function pathForWave(wave) {
+  return wave >= SHIFT_WAVE ? EMBER_ROAD_CELLS : DAWN_ROAD_CELLS;
+}
 
 /** The pixel centre of a grid cell (cells outside the grid are how the path enters and leaves). */
 export function cellCenter(col, row) {
@@ -77,17 +105,18 @@ export function cellAt(x, y) {
   return { col, row };
 }
 
-/** True when a cell is path: no tower may stand where the Murk walks. */
-export function isPathCell(col, row) {
-  return PATH_CELLS.some(([c, r]) => c === col && r === row);
+/** True when a cell is on `wave`'s road: no tower may stand where the Murk walks. */
+export function isPathCell(col, row, wave) {
+  return pathForWave(wave).some(([c, r]) => c === col && r === row);
 }
 
 /**
- * The walking line in pixels, with the length of every leg and the total, so an enemy's
- * distance along the path becomes a position by one walk of the legs.
+ * The walking line of `cells` (the Dawn Road by default) in pixels, with the length of
+ * every leg and the total, so an enemy's distance along the road becomes a position by
+ * one walk of the legs.
  */
-export function buildPathLine() {
-  const points = PATH_CELLS.map(([c, r]) => cellCenter(c, r));
+export function buildPathLine(cells = DAWN_ROAD_CELLS) {
+  const points = cells.map(([c, r]) => cellCenter(c, r));
   const legs = [];
   let total = 0;
   for (let i = 1; i < points.length; i += 1) {

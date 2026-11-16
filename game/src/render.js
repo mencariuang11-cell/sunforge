@@ -6,7 +6,8 @@
 // so every screen — title, battle, victory, defeat — is composed to read at a glance.
 import {
   COLOR_HEX, DIFFICULTIES, DIFFICULTY_CHIPS, FONT, GRID, PANEL,
-  PANEL_BUTTONS, PANEL_CARDS, PALETTE, TOTAL_WAVES, VIEW, buildPathLine, cellAt, isPathCell,
+  PANEL_BUTTONS, PANEL_CARDS, PALETTE, SHIFT_WAVE, TOTAL_WAVES, VIEW,
+  buildPathLine, cellAt, cellCenter, isPathCell, pathForWave,
 } from './config.js';
 import { TOWER_TYPES, sellValue, upgradeCost } from './towers.js';
 import { enemyCoreHex } from './enemies.js';
@@ -105,7 +106,11 @@ function drawTowerGlyph(ctx, type, x, y, angle = Math.PI / 4, scale = 1) {
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
-  const pathLine = buildPathLine();
+  // Both roads' walking lines: the field, its glowing route and its night gate all
+  // follow the road the state's wave walks — Dawn before the shift, Ember after it.
+  const dawnLine = buildPathLine(pathForWave(1));
+  const emberLine = buildPathLine(pathForWave(SHIFT_WAVE));
+  const roadLine = (state) => (state.wave >= SHIFT_WAVE ? emberLine : dawnLine);
   const starRandom = createRandom(7);
   const stars = Array.from({ length: 110 }, () => ({
     x: starRandom.range(0, VIEW.width),
@@ -154,7 +159,7 @@ export function createRenderer(canvas) {
       for (let col = 0; col < GRID.cols; col += 1) {
         const x = GRID.x + col * GRID.tile;
         const y = GRID.y + row * GRID.tile;
-        ctx.fillStyle = isPathCell(col, row) ? PALETTE.path : ((col + row) % 2 === 0 ? PALETTE.fieldA : PALETTE.fieldB);
+        ctx.fillStyle = isPathCell(col, row, state.wave) ? PALETTE.path : ((col + row) % 2 === 0 ? PALETTE.fieldA : PALETTE.fieldB);
         ctx.fillRect(x, y, GRID.tile, GRID.tile);
       }
     }
@@ -164,20 +169,21 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = 0.4 + 0.12 * Math.sin(state.time * 1.6);
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    pathLine.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    roadLine(state).points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
     ctx.restore();
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 2;
     ctx.strokeRect(GRID.x, GRID.y, GRID.cols * GRID.tile, GRID.rows * GRID.tile);
-    // The night gate the Murk pours from.
+    // The night gate the Murk pours from, standing at the live road's entry row.
+    const gateY = cellCenter(0, pathForWave(state.wave)[0][1]).y - 32;
     ctx.fillStyle = '#0a0618';
-    roundRect(ctx, -6, 214, 34, 64, 8);
+    roundRect(ctx, -6, gateY, 34, 64, 8);
     ctx.fill();
     ctx.strokeStyle = '#7a5cff';
     ctx.globalAlpha = 0.65;
     ctx.lineWidth = 2;
-    roundRect(ctx, -6, 214, 34, 64, 8);
+    roundRect(ctx, -6, gateY, 34, 64, 8);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
@@ -343,7 +349,7 @@ export function createRenderer(canvas) {
         const cx = GRID.x + cell.col * GRID.tile;
         const cy = GRID.y + cell.row * GRID.tile;
         const occupied = state.towers.some((t) => t.col === cell.col && t.row === cell.row);
-        const valid = !isPathCell(cell.col, cell.row) && !occupied && state.sunlight >= TOWER_TYPES[state.placing].cost;
+        const valid = !isPathCell(cell.col, cell.row, state.wave) && !occupied && state.sunlight >= TOWER_TYPES[state.placing].cost;
         ctx.fillStyle = valid ? 'rgba(255,215,106,0.22)' : 'rgba(255,90,78,0.28)';
         ctx.fillRect(cx, cy, GRID.tile, GRID.tile);
         ctx.globalAlpha = 0.65;
@@ -642,7 +648,7 @@ export function createRenderer(canvas) {
 
   /** The title screen's difficulty selector: three chips, the chosen night lit. */
   function drawDifficultySelector(state) {
-    text(ctx, 'CHOOSE THE NIGHT — KEYS 1 · 2 · 3 OR CLICK', VIEW.width / 2, 508, { size: 12, align: 'center', weight: '700', color: PALETTE.muted });
+    text(ctx, 'CHOOSE THE NIGHT — KEYS 1 · 2 · 3 OR CLICK', VIEW.width / 2, 540, { size: 12, align: 'center', weight: '700', color: PALETTE.muted });
     for (const chip of DIFFICULTY_CHIPS) {
       const def = DIFFICULTIES[chip.key];
       const chosen = state.difficulty === chip.key;
@@ -680,6 +686,7 @@ export function createRenderer(canvas) {
         'Mirrors bend the beam · Prisms split it into colours · Lenses focus it.',
         'The sun crosses the sky DURING each wave — re-aim with Q / E or drag.',
         'Coloured light burns matching wisps hardest. Clear all 15 waves — then face the Endless Night.',
+        'The road shifts at wave 11 — towers in its way are refunded in full.',
       ], 'CLICK OR PRESS SPACE TO PLAY', state);
       drawDifficultySelector(state);
     } else if (state.screen === 'won') {

@@ -267,27 +267,30 @@ function stageBoss(game) {
 }
 
 /**
- * 4-victory: the dawn network of the old dawn scene, opened on the campaign ledger
- * (setupScene), but the final wave is then genuinely fought: enemies planted on
- * the crossings at reduced strength burn, leak or burst under the game's own step
- * until its own wave-clear rule ends wave 15 and raises the victory screen — the
- * totals on it are the seeded campaign's plus the fight's real kills and bounties.
+ * 4-victory: a twelve-tower network built on the EMBER Road (wave 15 walks it, so
+ * the victory frame shows the second road — the row-1 band above its top straight,
+ * the pocket between its middle straights, the corridor row between its lower
+ * straights), opened on the campaign ledger (setupScene), but the final wave is
+ * then genuinely fought: enemies planted on the crossings at reduced strength
+ * burn, leak or burst under the game's own step until its own wave-clear rule
+ * ends wave 15 and raises the victory screen — the totals on it are the seeded
+ * campaign's plus the fight's real kills and bounties.
  */
 function stageWon(game) {
   const state = setupScene(game, 15);
   const samples = pathSamples(game.pathLine);
-  buildTower(game, 'mirror', 2, 0, 45);
-  buildTower(game, 'mirror', 5, 0, 105);
-  buildTower(game, 'prism', 8, 0);
-  buildTower(game, 'lens', 11, 0, null, 2);
-  buildTower(game, 'mirror', 4, 2, 75);
-  buildTower(game, 'prism', 9, 3);
-  buildTower(game, 'mirror', 13, 2, 60);
-  buildTower(game, 'lens', 6, 5);
-  buildTower(game, 'mirror', 10, 6, 135);
-  const hero = buildTower(game, 'prism', 13, 5, null, 3);
-  buildTower(game, 'mirror', 7, 8, 45);
-  buildTower(game, 'lens', 12, 8);
+  buildTower(game, 'mirror', 3, 1, 45);
+  buildTower(game, 'mirror', 6, 1, 105);
+  buildTower(game, 'prism', 9, 1);
+  buildTower(game, 'lens', 14, 1, null, 2);
+  buildTower(game, 'mirror', 4, 3, 75);
+  buildTower(game, 'lens', 8, 3);
+  buildTower(game, 'mirror', 5, 4, 60);
+  buildTower(game, 'prism', 7, 4);
+  buildTower(game, 'mirror', 14, 4, 135);
+  buildTower(game, 'mirror', 1, 7, 45);
+  const hero = buildTower(game, 'prism', 6, 7, null, 3);
+  buildTower(game, 'lens', 5, 9);
   const { segments } = bestSunPosition(game, samples, networkScore);
   const used = plantOnCrossings(game, segments, samples, { max: 7, beefy: 0.35 });
   plantAt(game, 'shade', 250, used, 0.35);

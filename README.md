@@ -16,6 +16,7 @@ SUNFORGE is a sunbeam tower defense in plain JavaScript — no library, no build
 - **Mind the sun:** the sun rides its arc continuously while a wave runs — sunrise slants in from the left, noon falls straight down, sunset slants away right. A network aimed at the morning sun is wrong for the evening, so re-aim mid-wave.
 - **Match the colours:** a white beam burns everything at 60% strength. A prism splits it into red, green and blue beams that burn enemies of their own colour at full strength and everything else at only 25% — route the right colour onto the right wisp.
 - **Manage the treasury:** kills pay Sunlight bounties and clearing a wave pays a bonus. **U** upgrades the selected tower (to level 3), **X** sells it back at 70% of what you sank into it.
+- **Watch the road:** waves 1–10 walk the **Dawn Road**; at wave 11 the road **shifts** to the **Ember Road**, a different route across the same field, for the rest of the run. Any tower standing where the Ember Road needs to run is removed and **refunded in full** — purchase plus upgrades, not the 70% a sale pays — with the refund announced on screen, so plan the rebuild around the payout.
 - **Go beyond the dawn:** clearing wave 15 wins the campaign — and the victory screen offers **N** (or a click on the offer) to face the **Endless Night**: procedurally composed waves 16, 17, 18… with the same towers, treasury and Crystal, until the Crystal falls. The defeat screen names the wave you reached.
 - **Keys:** 1 / 2 / 3 difficulty (title) · Q / E rotate · U upgrade · X sell · N endless (victory) · P pause · M mute · R restart.
 
@@ -24,6 +25,8 @@ SUNFORGE is a sunbeam tower defense in plain JavaScript — no library, no build
 **The beam** — base burn 30 damage per second before factors, applied to any enemy standing in the light (7 px half-width, 4 px when focused). White light burns at ×0.6 against everything; coloured light burns at full strength against its own colour and ×0.25 against other colours and the colourless. One traced network is capped at 140 segments, splits included.
 
 **Solar flare** — on waves 10 and up (the whole late campaign and the Endless Night), while the sun crosses the peak of its arc (wave progress 0.45–0.55), every beam widens (half-width ×1.6) and burns harder (damage ×1.5) under a "SOLAR FLARE — THE SUN SURGES" banner; a pure function of wave progress, so it fires at the same moment of the crossing every run.
+
+**The two roads** — waves 1–10 walk the Dawn Road (2,460 px of road: in along row 1, down column 12, back along row 4, down column 3, out along row 7). From wave 11 the road shifts to the Ember Road (2,760 px: in low along row 8, up column 12, back along row 6, up column 2, across row 2, down column 10, and out along row 5, straight at the Crystal's row), and every later wave — the rest of the campaign and the whole Endless Night — walks it. When the shift lands at wave 11's build phase, any tower standing on a cell the Ember Road needs is removed and refunded at 100% of its invested Sunlight (purchase plus upgrades; a sale pays only 70%), with the refund announced on screen.
 
 **Difficulty** — chosen on the title screen and applied to every spawn of the run: DAWN foes ×1.0 hit points and 120 starting Sunlight, DUSK ×1.35 and 110, ECLIPSE ×1.8 and 100. Bosses scale by the same multiplier, on top of their wave scale.
 
