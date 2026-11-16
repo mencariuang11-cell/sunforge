@@ -4,14 +4,14 @@
 // render, input); this file wires them together and owns the rules that cross between
 // them, like a splitter bursting into minis or a cleared wave paying its bonus.
 //
-// ?seed=N fixes the run's random stream. ?shot=cover|prism|boss|dawn (with &seed=N)
+// ?seed=N fixes the run's random stream. ?shot=cover|prism|boss|won (with &seed=N)
 // stages that screenshot scene instead of running the loop, paints it twice and sets
 // window.__shotReady. window.__sunforge exposes a small test hook for headless play.
 import {
   CRYSTAL_HP, START_SUNLIGHT, STEP, TOTAL_WAVES, buildPathLine, isPathCell,
 } from './config.js';
-import { createRandom } from './random.js';
 import { applyBeamDamage, traceBeams } from './beams.js';
+import { createRandom } from './random.js';
 import { aimMirror, createTower, rotateMirror, sellValue, upgradeCost, TOWER_TYPES } from './towers.js';
 import { createEnemy, enemyCoreHex, placeOnPath } from './enemies.js';
 import { buildSpawnSchedule, bossScaleForWave, hpScaleForWave, waveClearBonus, WAVES } from './waves.js';
@@ -20,11 +20,6 @@ import { createAudio } from './audio.js';
 import { createRenderer } from './render.js';
 import { createInput } from './input.js';
 import { stageShot } from './shots.js';
-
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
-/** Particle ceiling: past this, new bursts are dropped so a boss death cannot flood the frame. */
-const MAX_PARTICLES = 420;
 
 /**
  * Create a whole game at `seed`: fresh state plus the actions that change it. The
@@ -335,6 +330,11 @@ export function createGame(seed) {
     upgradeSelected, sellSelected, startWave, spawnEnemyAt, selectedTower, step,
   };
 }
+
+/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
+const MAX_FRAME = 0.25;
+/** Particle ceiling: past this, new bursts are dropped so a boss death cannot flood the frame. */
+const MAX_PARTICLES = 420;
 
 // ---------------------------------------------------------------------------
 // Browser boot: input, the render loop, screenshot staging, and the test hook.

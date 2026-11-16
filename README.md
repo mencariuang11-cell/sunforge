@@ -47,7 +47,7 @@ SUNFORGE is a sunbeam tower defense in plain JavaScript — no library, no build
 node serve.ts
 ```
 
-Then open http://localhost:8080 to play. The game is static files, so opening `game/index.html` in a desktop browser works too. `node main.ts` regenerates the deterministic `dossier.json` that describes the game to the grader (written to `$MAKEFUN_OUTPUT_DIR`, or `/output` by default).
+Then open http://localhost:8080 to play. The game is static files, so any static file server pointed at `game/` works too (ES modules need http, not file://). `node main.ts` regenerates the deterministic `dossier.json` that describes the game to the grader (written to `$MAKEFUN_OUTPUT_DIR`, or `/output` by default).
 
 ## License
 

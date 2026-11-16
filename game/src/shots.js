@@ -1,4 +1,4 @@
-// The screenshot scenes behind ?shot=cover|prism|boss|dawn. Each scene builds a real
+// The screenshot scenes behind ?shot=cover|prism|boss|won. Each scene builds a real
 // position with the game's own actions — towers placed and upgraded through the same
 // calls a player makes, enemies spawned on the path — then searches a fixed grid of
 // sun positions for the one where the traced network crosses the path most, plants
@@ -189,11 +189,14 @@ function stagePrism(game) {
 function stageBoss(game) {
   const state = setupScene(game, 10);
   const samples = pathSamples(game.pathLine);
-  buildTower(game, 'lens', 6, 0, null, 2);
+  const lens = buildTower(game, 'lens', 6, 0, null, 2);
   buildTower(game, 'mirror', 6, 2, 75);
   buildTower(game, 'prism', 11, 3);
   buildTower(game, 'mirror', 13, 6, 105);
   buildTower(game, 'mirror', 2, 3, 45);
+  buildTower(game, 'mirror', 3, 6, 30);
+  buildTower(game, 'lens', 9, 5);
+  buildTower(game, 'mirror', 8, 7, 120);
   const bossScore = (segments, smp) => {
     let score = networkScore(segments, smp);
     for (const seg of segments) {
@@ -227,14 +230,22 @@ function stageBoss(game) {
   used.push(bossDist);
   plantOnCrossings(game, segments, samples, { max: 4, used });
   plantAt(game, 'shade', 500, used);
+  plantAt(game, 'gloam', 950, used);
   plantAt(game, 'emberWisp', 1750, used);
+  plantAt(game, 'tideWisp', 2150, used);
   state.sunlight = 130;
   settle(game);
+  if (lens) state.selectedId = lens.id;
 }
 
-/** 4-dawn: wave 14, a dense grown network, the upgrade panel open on a level-3 prism. */
-function stageDawn(game) {
-  const state = setupScene(game, 14);
+/**
+ * 4-victory: the dawn network of the old dawn scene, but the final wave is then
+ * genuinely fought: enemies planted on the crossings at half strength burn, leak
+ * or burst under the game's own step until its own wave-clear rule ends wave 15
+ * and raises the victory screen — real kills, real bounties, real leaks on it.
+ */
+function stageWon(game) {
+  const state = setupScene(game, 15);
   const samples = pathSamples(game.pathLine);
   buildTower(game, 'mirror', 2, 0, 45);
   buildTower(game, 'mirror', 5, 0, 105);
@@ -249,16 +260,20 @@ function stageDawn(game) {
   buildTower(game, 'mirror', 7, 8, 45);
   buildTower(game, 'lens', 12, 8);
   const { segments } = bestSunPosition(game, samples, networkScore);
-  const used = plantOnCrossings(game, segments, samples, { max: 8 });
-  plantAt(game, 'shade', 250, used);
-  plantAt(game, 'emberWisp', 620, used);
-  plantAt(game, 'splitter', 1050, used);
-  plantAt(game, 'gloam', 1500, used);
-  plantAt(game, 'verdantWisp', 1900, used);
-  plantAt(game, 'shade', 2280, used);
+  const used = plantOnCrossings(game, segments, samples, { max: 7, beefy: 0.35 });
+  plantAt(game, 'shade', 250, used, 0.35);
+  plantAt(game, 'emberWisp', 620, used, 0.35);
+  plantAt(game, 'splitter', 1050, used, 0.35);
+  plantAt(game, 'verdantWisp', 1650, used, 0.35);
+  plantAt(game, 'shade', 1450, used, 0.35);
   state.sunlight = 65;
-  if (hero) state.selectedId = hero.id;
-  settle(game);
+  // Fight it out under the game's own rules until the campaign is won.
+  let guard = 0;
+  while (state.screen === 'play' && guard < 120 / STEP) {
+    game.step(STEP);
+    guard += 1;
+  }
+  settle(game, 0.5);
   if (hero) state.selectedId = hero.id;
 }
 
@@ -266,6 +281,6 @@ function stageDawn(game) {
 export function stageShot(name, game) {
   if (name === 'prism') stagePrism(game);
   else if (name === 'boss') stageBoss(game);
-  else if (name === 'dawn') stageDawn(game);
+  else if (name === 'won') stageWon(game);
   else stageCover(game);
 }
