@@ -5,7 +5,7 @@
 // enemies on those crossings (matching wisp colours to coloured beams), freezes the
 // sun, and settles a third of a second so the burns are lit. Same seed, same frame.
 import { STEP } from './config.js';
-import { traceBeams } from './beams.js';
+import { segmentPointDistance, traceBeams } from './beams.js';
 
 /** Wisp type that burns hardest under each beam colour. */
 const WISP_FOR_COLOR = { red: 'emberWisp', green: 'verdantWisp', blue: 'tideWisp' };
@@ -161,13 +161,92 @@ function plantAt(game, type, dist, used, beefy = 2.5) {
   used.push(dist);
 }
 
+/** The point at path distance `dist` along a walking line (placeOnPath's own walk). */
+function pointAtDistance(pathLine, dist) {
+  let rest = dist;
+  for (let i = 0; i < pathLine.legs.length; i += 1) {
+    if (rest <= pathLine.legs[i]) {
+      const t = pathLine.legs[i] === 0 ? 0 : rest / pathLine.legs[i];
+      return {
+        x: pathLine.points[i].x + (pathLine.points[i + 1].x - pathLine.points[i].x) * t,
+        y: pathLine.points[i].y + (pathLine.points[i + 1].y - pathLine.points[i].y) * t,
+      };
+    }
+    rest -= pathLine.legs[i];
+  }
+  const last = pathLine.points[pathLine.points.length - 1];
+  return { x: last.x, y: last.y };
+}
+
 /** Let the staged position burn for a fixed settle, sun held, so the frame is mid-fight. */
 function settle(game, seconds = 0.3) {
   const steps = Math.round(seconds / STEP);
   for (let i = 0; i < steps; i += 1) game.step(STEP);
 }
 
-/** 1-cover: the title over a live mid-wave network — mirrors chained into a prism and a lens. */
+/**
+ * The title screen's text band and difficulty chips, as canvas rectangles: the
+ * cover plants its Murk outside them wherever it can, so the backdrop stays busy
+ * at the edges while the words and the chips stay clean.
+ */
+const TEXT_BAND = { x0: 330, x1: 950, y0: 240, y1: 630 };
+const CHIP_RECT = { x0: 355, x1: 935, y0: 545, y1: 620 };
+
+/**
+ * The cover's sun score: not just crossings — total beam length across the field
+ * and coverage of all four edges, so the backdrop behind the title is a working
+ * network, not one fan in a corner.
+ */
+function coverScore(segments, samples) {
+  let score = 0;
+  const zones = new Set();
+  for (const seg of segments) {
+    score += Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
+    const mx = (seg.x1 + seg.x2) / 2;
+    const my = (seg.y1 + seg.y2) / 2;
+    if (my < TEXT_BAND.y0) zones.add('top');
+    if (my > TEXT_BAND.y1 - 10) zones.add('bottom');
+    if (mx < TEXT_BAND.x0) zones.add('left');
+    if (mx > 700) zones.add('right');
+    if (segmentCrossing(samples, seg).d < CROSSING_DISTANCE) score += 60;
+  }
+  return score + 250 * zones.size + 10 * segments.length;
+}
+
+/**
+ * Plant the cover's Murk on beam crossings, wisps matched to beam colours as
+ * usual — but crossings outside the title's text band first, and never behind
+ * the difficulty chips. Returns the path distances used.
+ */
+function plantCoverCrossings(game, segments, samples, { max = 8 } = {}) {
+  const crossings = [];
+  for (const seg of segments) {
+    const crossing = segmentCrossing(samples, seg);
+    if (crossing.d >= CROSSING_DISTANCE) continue;
+    const pt = pointAtDistance(game.pathLine, crossing.dist);
+    const inBand = pt.x >= TEXT_BAND.x0 && pt.x <= TEXT_BAND.x1 && pt.y >= TEXT_BAND.y0 && pt.y <= TEXT_BAND.y1;
+    const inChips = pt.x >= CHIP_RECT.x0 && pt.x <= CHIP_RECT.x1 && pt.y >= CHIP_RECT.y0 && pt.y <= CHIP_RECT.y1;
+    crossings.push({ dist: crossing.dist, color: seg.color, inBand, inChips });
+  }
+  crossings.sort((a, b) => (Number(a.inBand) - Number(b.inBand)) || (a.dist - b.dist));
+  const used = [];
+  for (const crossing of crossings) {
+    if (used.length >= max) break;
+    if (crossing.inChips) continue;
+    if (used.some((d) => Math.abs(d - crossing.dist) < MIN_SEPARATION)) continue;
+    const type = crossing.color === 'white' ? 'shade' : WISP_FOR_COLOR[crossing.color];
+    game.spawnEnemyAt(type, crossing.dist, 2.5);
+    used.push(crossing.dist);
+  }
+  return used;
+}
+
+/**
+ * 1-cover: the title over a live mid-wave network at its busiest — the prism's
+ * red beam caught by mirror after mirror into a zigzag that crosses the whole
+ * field and runs through the lens, the green and blue beams pouring down beside
+ * it, Murk burning on the crossings around the text.
+ */
 function stageCover(game) {
   const state = setupScene(game, 6);
   const samples = pathSamples(game.pathLine);
@@ -177,11 +256,13 @@ function stageCover(game) {
   buildTower(game, 'lens', 5, 5);
   buildTower(game, 'mirror', 9, 6, 30);
   buildTower(game, 'mirror', 13, 5, 75);
-  const { segments } = bestSunPosition(game, samples, networkScore);
-  const used = plantOnCrossings(game, segments, samples, { max: 7 });
+  buildTower(game, 'mirror', 9, 9, 15);
+  buildTower(game, 'mirror', 3, 3, 120);
+  const { segments } = bestSunPosition(game, samples, coverScore, { from: 0.06, to: 0.95, step: 0.01 });
+  const used = plantCoverCrossings(game, segments, samples, { max: 8 });
   plantAt(game, 'shade', 300, used);
   plantAt(game, 'splitter', 1500, used);
-  plantAt(game, 'shade', 2150, used);
+  plantAt(game, 'shade', 1750, used);
   state.sunlight = 85;
   settle(game);
   state.screen = 'title';
@@ -210,37 +291,67 @@ function stagePrism(game) {
 }
 
 /**
- * 3-boss: the wave-10 Hollow Sun under a lens-focused beam, the network around it —
- * staged inside the solar-flare window (sun progress 0.46-0.54, within 0.45-0.55),
- * so the frame carries the flare banner and the widened, brightened beams.
+ * 3-boss: the wave-10 Hollow Sun standing in the prism's fan under the solar
+ * flare. The chain runs lens -> prism down the sun's own column: the lens at
+ * (8,0) focuses the noon beam, the prism at (8,2) splits the focused white into
+ * red, green and blue, a mirror at (7,5) throws the blue across the lower field
+ * and a mirror at (9,8) sends the red out along the bottom — so the frame holds
+ * the flare banner AND the three-colour fan at once. The sun search stays
+ * inside the flare window (progress 0.50-0.54, within 0.45-0.55) and scores the
+ * fan's length and completeness, not just its crossings.
  */
 function stageBoss(game) {
   const state = setupScene(game, 10);
   const samples = pathSamples(game.pathLine);
-  const lens = buildTower(game, 'lens', 6, 0, null, 2);
-  buildTower(game, 'mirror', 6, 2, 75);
-  buildTower(game, 'prism', 11, 3);
-  buildTower(game, 'mirror', 13, 6, 105);
+  const lens = buildTower(game, 'lens', 8, 0, null, 2);
+  buildTower(game, 'prism', 8, 2);
+  buildTower(game, 'mirror', 7, 5, 135);
+  buildTower(game, 'mirror', 9, 8, 45);
   buildTower(game, 'mirror', 2, 3, 45);
-  buildTower(game, 'mirror', 4, 6, 30);
+  buildTower(game, 'mirror', 13, 6, 105);
   buildTower(game, 'lens', 9, 5);
-  buildTower(game, 'mirror', 8, 6, 120);
+  buildTower(game, 'mirror', 4, 6, 165);
   const bossScore = (segments, smp) => {
     let score = networkScore(segments, smp);
+    const colors = new Set();
     for (const seg of segments) {
       if (seg.focused && segmentCrossing(smp, seg).d < CROSSING_DISTANCE) score += 14;
+      if (seg.color !== 'white') {
+        colors.add(seg.color);
+        score += Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1) / 20;
+      }
     }
+    if (colors.size === 3) score += 40;
     return score;
   };
-  const { segments } = bestSunPosition(game, samples, bossScore, { from: 0.46, to: 0.54, step: 0.02 });
-  // The boss stands where the focused light crosses the road, if it does anywhere.
+  const { segments } = bestSunPosition(game, samples, bossScore, { from: 0.5, to: 0.54, step: 0.01 });
+  // The boss stands on the fan: the focused crossing nearest the field's centre
+  // inside the centre box, so the Hollow Sun fills the middle of the frame with
+  // coloured light on it. Fall back to the first crossings as before.
   let bossDist = null;
-  for (const seg of segments) {
-    if (!seg.focused) continue;
-    const crossing = segmentCrossing(samples, seg);
-    if (crossing.d < CROSSING_DISTANCE) {
-      bossDist = crossing.dist;
-      break;
+  let bossDc = Infinity;
+  for (const smp of samples) {
+    if (smp.x < 330 || smp.x > 700 || smp.y < 240 || smp.y > 620) continue;
+    let d = Infinity;
+    for (const seg of segments) {
+      if (!seg.focused) continue;
+      d = Math.min(d, segmentPointDistance(seg.x1, seg.y1, seg.x2, seg.y2, smp.x, smp.y));
+    }
+    if (d >= CROSSING_DISTANCE) continue;
+    const dc = Math.hypot(smp.x - 504, smp.y - 450);
+    if (dc < bossDc) {
+      bossDc = dc;
+      bossDist = smp.dist;
+    }
+  }
+  if (bossDist === null) {
+    for (const seg of segments) {
+      if (!seg.focused) continue;
+      const crossing = segmentCrossing(samples, seg);
+      if (crossing.d < CROSSING_DISTANCE) {
+        bossDist = crossing.dist;
+        break;
+      }
     }
   }
   if (bossDist === null) {
